@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Visor Mapillary Streetview - FINAL</title>
+    <title>Visor Mapillary y MapLibre: Solución Final</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
     
     <link href='https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css' rel='stylesheet' />
@@ -12,30 +12,44 @@
     <style>
         /* Estilos CSS para el layout de dos paneles (Mapa y Visor) */
         body { margin: 0; padding: 0; font-family: sans-serif; }
+        
+        /* Contenedores */
         #map { 
             position: absolute; 
             top: 0; 
             bottom: 0; 
             left: 0; 
-            width: 60%; /* 60% de la pantalla para el mapa */
+            width: 60%; /* Mapa a la izquierda */
         }
         #viewer { 
             position: absolute; 
             top: 0; 
             bottom: 0; 
             right: 0; 
-            width: 40%; /* 40% de la pantalla para el visor 360 */
+            width: 40%; /* Visor 360 a la derecha */
             background-color: #222; 
         }
+        
+        /* Mensaje de carga/error */
         #loading-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
             transform: translate(-50%, -50%);
-            color: white;
-            z-index: 10;
-            text-align: center;
+            color: white; 
+            z-index: 10; 
+            text-align: center; 
             font-size: 1.2em;
+        }
+        
+        /* Estilo del marcador de posición del visor (triángulo rojo) */
+        .viewer-marker {
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 15px solid #ff0000; /* Triángulo rojo apuntando hacia arriba */
+            cursor: pointer;
         }
     </style>
 </head>
@@ -45,7 +59,7 @@
     
     <div id="viewer">
         <div id="loading-message">
-            Haga clic en una línea de secuencia roja del mapa para iniciar el Streetview.
+            Haga clic en un punto azul para iniciar el Streetview.
         </div>
     </div>
 
@@ -54,16 +68,17 @@
 
     <script>
         // =========================================================
-        // CONFIGURACIÓN DE MAPILLARY Y MAPA
+        // CONFIGURACIÓN DE MAPILLARY (CARMapillary)
         // =========================================================
-        // ACCESS TOKEN (Token completo) -> Necesario para los tiles y el visor
-        const MAPILLARY_ACCESS_TOKEN = "MLY|32604000689248347|a7e69b278675ea3dee618791563ad6ef";
+        // Token de Acceso (Último token funcional para los tiles)
+        const MAPILLARY_ACCESS_TOKEN = "MLY|25741372718782447|7e1b8325fd79bdf8cbf7a90e90113444"; 
         
-        // Coordenadas de ejemplo (San José, Costa Rica)
+        // Centro inicial (San José, Costa Rica)
         const DEFAULT_CENTER = [-84.07, 9.93]; 
         const DEFAULT_ZOOM = 14; 
         
         const loadingMessage = document.getElementById('loading-message');
+        let viewerMarker; // Marcador del usuario en el mapa (global)
         // =========================================================
 
         // 1. Inicializar el Mapa (MapLibre GL)
@@ -77,7 +92,7 @@
         // 2. Inicializar el Visor Inmersivo (Mapillary JS)
         const viewer = new mapillary.Viewer({
             container: 'viewer',
-            accessToken: MAPILLARY_ACCESS_TOKEN, // Usa el token completo
+            accessToken: MAPILLARY_ACCESS_TOKEN,
             component: { 
                 cover: false, 
                 zoom: false,       
@@ -92,9 +107,51 @@
              loadingMessage.style.display = isLoading ? 'none' : 'block';
         });
 
+        // =========================================================
+        // SINCRONIZACIÓN: ESCUCHAR EL EVENTO DE NAVEGACIÓN
+        // =========================================================
+        viewer.on(mapillary.Viewer.nodechanged, (node) => {
+            // Se dispara cada vez que la imagen cambia (navegación del usuario)
+            const [lng, lat] = node.latLon; 
+            const bearing = node.camera.bearing; // Dirección de la cámara
+            
+            if (viewerMarker) {
+                updateMapMarker(lng, lat, bearing);
+            }
+        });
+
+        // =========================================================
+        // FUNCIÓN DE SINCRONIZACIÓN (Mueve el marcador y centra el mapa)
+        // =========================================================
+        function updateMapMarker(lng, lat, bearing) {
+            // Mover el marcador a la nueva posición y rotarlo
+            viewerMarker.setLngLat([lng, lat]);
+            viewerMarker.setRotation(bearing); 
+
+            // Centrar el mapa en la nueva posición y girar la vista
+            map.flyTo({
+                center: [lng, lat],
+                bearing: bearing, 
+                zoom: 17,
+                speed: 0.5 
+            });
+        }
+        // =========================================================
+
         map.on('load', () => {
-            // 3. AGREGAR LA FUENTE DE DATOS DE MAPILLARY
-            // *** USANDO EL ENDPOINT QUE SÍ FUNCIONÓ con ACCESS_TOKEN ***
+            // CREACIÓN DEL MARCADOR EN EL MAPA (Triángulo rojo)
+            const el = document.createElement('div');
+            el.className = 'viewer-marker';
+
+            viewerMarker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' })
+                .setLngLat(DEFAULT_CENTER) 
+                .addTo(map);
+
+            // Ocultarlo inicialmente
+            viewerMarker.getElement().style.display = 'none'; 
+            
+            
+            // 3. AGREGAR LA FUENTE DE DATOS
             map.addSource('mapillary', {
                 type: 'vector',
                 tiles: ['https://tiles.mapillary.com/maps/vtp/mly1_public/2/{z}/{x}/{y}?access_token=' + MAPILLARY_ACCESS_TOKEN],
@@ -102,69 +159,62 @@
                 maxzoom: 14
             });
 
-            // 4. AGREGAR LA CAPA VISUAL DE LAS SECUENCIAS (LÍNEAS ROJAS)
-            map.addLayer({
-                id: 'mapillary-sequences',
-                type: 'line',
-                source: 'mapillary',
-                'source-layer': 'sequence', // Capa de secuencias
-                paint: {
-                    'line-color': '#ff0000', // Líneas rojas visibles
-                    'line-opacity': 0.9,
-                    'line-width': 3
+            // 4. AGREGAR CAPAS DE SECUENCIAS (Líneas Rojas) y PUNTOS (Puntos Azules)
+            map.addLayer({ id: 'mapillary-sequences', type: 'line', source: 'mapillary', 'source-layer': 'sequence', paint: { 'line-color': '#ff0000', 'line-opacity': 0.5, 'line-width': 3 }});
+            map.addLayer({ 
+                id: 'mapillary-points', 
+                type: 'circle', 
+                source: 'mapillary', 
+                'source-layer': 'image', 
+                paint: { 
+                    'circle-color': '#00BFFF', 
+                    'circle-opacity': 0.8, 
+                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 2, 18, 5]
                 }
             });
-            // 4b. AGREGAR LA CAPA VISUAL DE LOS PUNTOS DE IMAGEN
-            map.addLayer({
-                id: 'mapillary-points',
-                type: 'circle',
-                source: 'mapillary',
-                'source-layer': 'image', // <--- CAMBIO CLAVE: Usar la capa 'image'
-                paint: {
-                    'circle-color': '#00BFFF', // Color azul para los puntos
-                    'circle-opacity': 0.8,
-                    'circle-radius': [
-                        'interpolate', ['linear'], ['zoom'],
-                        14, 2, // Radio 2 en zoom 14
-                        18, 5  // Radio 5 en zoom 18
-                    ]
-                }
-            });
+
+
             // 5. FUNCIÓN DE "STREETVIEW" AL HACER CLIC
-            // *** ESCUCHAMOS el clic en los PUNTOS AZULES (mapillary-points) ***
             map.on('click', 'mapillary-points', (e) => {
                 const feature = e.features[0];
-                const imageKey = feature.properties.key; // Usamos la propiedad 'key' para la imagen individual
-    
+                const properties = feature.properties;
+                const imageKey = properties.id || properties.key; // Usamos 'id' (el que funcionó)
+
                 if (imageKey) {
                     loadingMessage.style.display = 'none'; 
+                    
+                    const viewerContainer = document.getElementById('viewer');
+                    viewerContainer.style.backgroundColor = '#1e90ff';
+                    viewerContainer.innerHTML = '<h4>Intentando cargar imagen...</h4>';
+                    
                     viewer.moveTo(imageKey)
                         .then(() => {
-                            map.flyTo({ center: e.lngLat, zoom: 16 });
+                            // Éxito: Streetview cargado
+                            viewerContainer.innerHTML = ''; 
+                            viewerContainer.style.backgroundColor = '#222';
+                            
+                            // 1. Mostrar y sincronizar la posición inicial
+                            viewerMarker.getElement().style.display = 'block'; 
+                            // Llamar a updateMapMarker con la posición del clic y bearing inicial 0
+                            const initialBearing = 0; 
+                            updateMapMarker(e.lngLat.lng, e.lngLat.lat, initialBearing);
+
+                            console.log(`¡Streetview activado con éxito para: ${imageKey}!`);
                         })
                         .catch((error) => {
-                            console.error("Error al cargar la imagen:", error);
-                            loadingMessage.innerText = "Error al cargar la imagen. Intente de nuevo.";
-                            loadingMessage.style.display = 'block';
+                            // Fracaso: Error de token
+                            viewerContainer.innerHTML = `<h4>ERROR DE CARGA (Token):</h4><p>Clave: ${imageKey}</p><p>Mensaje: ${error.message}</p>`;
+                            viewerContainer.style.backgroundColor = '#8B0000';
+                            console.error("Error final de carga:", error);
                         });
                 }
             });
-    
-            // 6. MEJORA DE UX: CAMBIAR EL CURSOR (Para la capa de PUNTOS)
-            map.on('mouseenter', 'mapillary-points', () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', 'mapillary-points', () => {
-                map.getCanvas().style.cursor = '';
-            });
-            
-            // (Opcional) Si quieres que las líneas rojas sean clickeables también:
-            map.on('mouseenter', 'mapillary-sequences', () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', 'mapillary-sequences', () => {
-                map.getCanvas().style.cursor = '';
-            });
+
+            // 6. MEJORA DE UX: CURSOR
+            map.on('mouseenter', 'mapillary-points', () => map.getCanvas().style.cursor = 'pointer');
+            map.on('mouseleave', 'mapillary-points', () => map.getCanvas().style.cursor = '');
+            map.on('mouseenter', 'mapillary-sequences', () => map.getCanvas().style.cursor = 'pointer');
+            map.on('mouseleave', 'mapillary-sequences', () => map.getCanvas().style.cursor = '');
         });
 
     </script>
