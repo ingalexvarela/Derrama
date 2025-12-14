@@ -98,7 +98,7 @@
             // 3. AGREGAR LA FUENTE DE DATOS DE MAPILLARY (Cobertura)
             map.addSource('mapillary', {
                 type: 'vector',
-                url: 'https://tiles.mapillary.com/maps/vtp/mly_map_feature_point/2/{z}/{x}/{y}?client_id=' + MAPILLARY_CLIENT_ID_NUMBER
+                url: 'https://tiles.mapillary.com/maps/v2/vector_tiles/v2.0/tiles/{z}/{x}/{y}/?client_id=' + MAPILLARY_CLIENT_ID_NUMBER
             });
 
             // 4. AGREGAR LA CAPA VISUAL DE LOS PUNTOS DE COBERTURA
