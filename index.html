@@ -114,7 +114,22 @@
                     'line-width': 3
                 }
             });
-
+            // 4b. AGREGAR LA CAPA VISUAL DE LOS PUNTOS DE IMAGEN
+            map.addLayer({
+                id: 'mapillary-points',
+                type: 'circle',
+                source: 'mapillary',
+                'source-layer': 'image', // <--- CAMBIO CLAVE: Usar la capa 'image'
+                paint: {
+                    'circle-color': '#00BFFF', // Color azul para los puntos
+                    'circle-opacity': 0.8,
+                    'circle-radius': [
+                        'interpolate', ['linear'], ['zoom'],
+                        14, 2, // Radio 2 en zoom 14
+                        18, 5  // Radio 5 en zoom 18
+                    ]
+                }
+            });
             // 5. FUNCIÓN DE "STREETVIEW" AL HACER CLIC
             // Escucha el clic en la capa de SECUENCIAS
             map.on('click', 'mapillary-sequences', (e) => {
