@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Visor Mapillary con Streetview (GitHub Pages)</title>
+    <title>Visor Mapillary Streetview - FINAL</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
     
     <link href='https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.css' rel='stylesheet' />
@@ -25,9 +25,8 @@
             bottom: 0; 
             right: 0; 
             width: 40%; /* 40% de la pantalla para el visor 360 */
-            background-color: #222; /* Fondo oscuro mientras carga la imagen */
+            background-color: #222; 
         }
-        /* Estilo para mostrar una indicación sobre el visor */
         #loading-message {
             position: absolute;
             top: 50%;
@@ -46,7 +45,7 @@
     
     <div id="viewer">
         <div id="loading-message">
-            Haga clic en un punto azul del mapa para iniciar el Streetview.
+            Haga clic en una línea de secuencia roja del mapa para iniciar el Streetview.
         </div>
     </div>
 
@@ -57,21 +56,20 @@
         // =========================================================
         // CONFIGURACIÓN DE MAPILLARY Y MAPA
         // =========================================================
-        const MAPILLARY_CLIENT_ID_NUMBER = "32604000689248347"; 
+        // ACCESS TOKEN (Token completo) -> Necesario para los tiles y el visor
         const MAPILLARY_ACCESS_TOKEN = "MLY|32604000689248347|a7e69b278675ea3dee618791563ad6ef";
         
         // Coordenadas de ejemplo (San José, Costa Rica)
         const DEFAULT_CENTER = [-84.07, 9.93]; 
         const DEFAULT_ZOOM = 14; 
         
-        // Elemento para mostrar el mensaje
         const loadingMessage = document.getElementById('loading-message');
         // =========================================================
 
         // 1. Inicializar el Mapa (MapLibre GL)
         const map = new maplibregl.Map({
             container: 'map',
-            style: 'https://demotiles.maplibre.org/style.json',
+            style: 'https://demotiles.maplibre.org/style.json', 
             center: DEFAULT_CENTER,
             zoom: DEFAULT_ZOOM
         });
@@ -79,48 +77,54 @@
         // 2. Inicializar el Visor Inmersivo (Mapillary JS)
         const viewer = new mapillary.Viewer({
             container: 'viewer',
-            accessToken: MAPILLARY_ACCESS_TOKEN,
+            accessToken: MAPILLARY_ACCESS_TOKEN, // Usa el token completo
             component: { 
-                cover: false,      // No necesitamos la pantalla de carga de Mapillary, usamos la nuestra
-                zoom: false,       // Simplificar controles
-                direction: false,  // Simplificar controles
-                sequence: false,   // Simplificar controles
+                cover: false, 
+                zoom: false,       
+                direction: false,  
+                sequence: false,   
                 attribution: true
             }
         });
 
-        // Ocultar el mensaje de inicio cuando el visor comienza a cargar algo
+        // Evento para ocultar/mostrar el mensaje de inicio
         viewer.on(mapillary.Viewer.loadingchanged, (isLoading) => {
              loadingMessage.style.display = isLoading ? 'none' : 'block';
         });
 
         map.on('load', () => {
-            // 3. AGREGAR LA FUENTE DE DATOS DE MAPILLARY (Cobertura)
+            // 3. AGREGAR LA FUENTE DE DATOS DE MAPILLARY
+            // *** USANDO EL ENDPOINT QUE SÍ FUNCIONÓ con ACCESS_TOKEN ***
             map.addSource('mapillary', {
                 type: 'vector',
-                url: 'https://tiles.mapillary.com/maps/v2/vector_tiles/v2.0/tiles/{z}/{x}/{y}/?client_id=' + MAPILLARY_CLIENT_ID_NUMBER
+                tiles: ['https://tiles.mapillary.com/maps/vtp/mly1_public/2/{z}/{x}/{y}?access_token=' + MAPILLARY_ACCESS_TOKEN],
+                minzoom: 0,
+                maxzoom: 14
             });
 
-            // 4. AGREGAR LA CAPA VISUAL DE LOS PUNTOS DE COBERTURA
+            // 4. AGREGAR LA CAPA VISUAL DE LAS SECUENCIAS (LÍNEAS ROJAS)
             map.addLayer({
-                id: 'mapillary-coverage',
-                type: 'circle',
+                id: 'mapillary-sequences',
+                type: 'line',
                 source: 'mapillary',
-                'source-layer': 'mapillary_feature_point',
+                'source-layer': 'sequence', // Capa de secuencias
                 paint: {
-                    'circle-color': '#00BFFF',
-                    'circle-opacity': 0.8,
-                    'circle-radius': 4
+                    'line-color': '#ff0000', // Líneas rojas visibles
+                    'line-opacity': 0.9,
+                    'line-width': 3
                 }
             });
 
             // 5. FUNCIÓN DE "STREETVIEW" AL HACER CLIC
-            map.on('click', 'mapillary-coverage', (e) => {
+            // Escucha el clic en la capa de SECUENCIAS
+            map.on('click', 'mapillary-sequences', (e) => {
                 const feature = e.features[0];
-                const imageKey = feature.properties.key; 
+                
+                // Los tiles de secuencia contienen la clave de la primera imagen de la secuencia.
+                const imageKey = feature.properties.first_image_key || feature.properties.key; 
 
                 if (imageKey) {
-                    loadingMessage.style.display = 'none'; // Ocultar mensaje antes de la carga
+                    loadingMessage.style.display = 'none'; 
                     // Mover el visor a la imagen 360 inmersiva
                     viewer.moveTo(imageKey)
                         .then(() => {
@@ -132,14 +136,16 @@
                             loadingMessage.innerText = "Error al cargar la imagen. Intente de nuevo.";
                             loadingMessage.style.display = 'block';
                         });
+                } else {
+                     console.log("Error: No se encontró la clave de imagen en la secuencia.");
                 }
             });
 
             // 6. MEJORA DE UX: CAMBIAR EL CURSOR
-            map.on('mouseenter', 'mapillary-coverage', () => {
+            map.on('mouseenter', 'mapillary-sequences', () => {
                 map.getCanvas().style.cursor = 'pointer';
             });
-            map.on('mouseleave', 'mapillary-coverage', () => {
+            map.on('mouseleave', 'mapillary-sequences', () => {
                 map.getCanvas().style.cursor = '';
             });
         });
